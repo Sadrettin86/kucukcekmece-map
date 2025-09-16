@@ -482,23 +482,12 @@
 
                 // Mahalle tıklama eventi
                 map.data.addListener('click', function(event) {
-                    const name = event.feature.getProperty('name') || 
-                                event.feature.getProperty('ad') || 
-                                event.feature.getProperty('mahalle') ||
-                                'Mahalle';
-                    
-                    // Info window göster
+                    // Mahalle sınırlarını hesapla ve zoom yap
                     const bounds = new google.maps.LatLngBounds();
                     event.feature.getGeometry().forEachLatLng(function(latlng) {
                         bounds.extend(latlng);
                     });
                     
-                    const infoWindow = new google.maps.InfoWindow({
-                        content: `<div style="padding: 10px;"><h3>${name}</h3><p>Küçükçekmece Mahallesi</p></div>`,
-                        position: bounds.getCenter()
-                    });
-                    
-                    infoWindow.open(map);
                     map.fitBounds(bounds);
                     
                     // Bir tık daha yakın zoom
