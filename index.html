@@ -19,9 +19,9 @@
 
         .search-container {
             position: absolute;
-            top: 50%;
+            top: 20px;
             left: 50%;
-            transform: translate(-50%, -50%);
+            transform: translateX(-50%);
             z-index: 1000;
             background: white;
             border-radius: 25px;
@@ -500,6 +500,12 @@
                     
                     infoWindow.open(map);
                     map.fitBounds(bounds);
+                    
+                    // Bir tık daha yakın zoom
+                    setTimeout(() => {
+                        const currentZoom = map.getZoom();
+                        map.setZoom(currentZoom + 1);
+                    }, 500);
                 });
 
                 console.log('Mahalle sınırları başarıyla yüklendi');
