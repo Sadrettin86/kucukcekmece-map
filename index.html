@@ -462,17 +462,15 @@
                 
                 // Mahalle sınırları stilini ayarla
                 map.data.setStyle({
-                    fillColor: '#ff6b6b',
-                    fillOpacity: 0.1,
+                    fillOpacity: 0,
                     strokeColor: '#ff0000',
-                    strokeWeight: 2,
-                    strokeOpacity: 0.8
+                    strokeWeight: 1,
+                    strokeOpacity: 0.7
                 });
 
-                // Mahalle üzerine gelince vurgulama
+                // Mahalle üzerine gelince sadece sınır kalınlaşsın
                 map.data.addListener('mouseover', function(event) {
                     map.data.overrideStyle(event.feature, {
-                        fillOpacity: 0.3,
                         strokeWeight: 3
                     });
                 });
