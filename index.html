@@ -158,6 +158,9 @@
                 gestureHandling: 'greedy',
                 rotateControl: true,
                 tilt: 0,
+                mapTypeControlOptions: {
+                    mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.HYBRID]
+                },
                 restriction: {
                     latLngBounds: KUCUKCEKMECE_BOUNDS,
                     strictBounds: true
@@ -182,6 +185,31 @@
                         featureType: 'administrative.land_parcel',
                         elementType: 'geometry.stroke',
                         stylers: [{ color: '#orange' }, { weight: 0.5 }, { visibility: 'on' }]
+                    },
+                    {
+                        featureType: 'road',
+                        elementType: 'labels.text.fill',
+                        stylers: [{ visibility: 'on' }]
+                    },
+                    {
+                        featureType: 'road',
+                        elementType: 'labels.text.stroke',
+                        stylers: [{ visibility: 'on' }]
+                    },
+                    {
+                        featureType: 'road.local',
+                        elementType: 'labels.text',
+                        stylers: [{ visibility: 'on' }]
+                    },
+                    {
+                        featureType: 'road.arterial',
+                        elementType: 'labels.text',
+                        stylers: [{ visibility: 'on' }]
+                    },
+                    {
+                        featureType: 'road.highway',
+                        elementType: 'labels.text',
+                        stylers: [{ visibility: 'on' }]
                     },
                     {
                         featureType: 'poi',
