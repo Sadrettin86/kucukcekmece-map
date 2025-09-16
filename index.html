@@ -107,19 +107,6 @@
             width: 100%;
         }
 
-        .info-panel {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            font-size: 14px;
-            color: #666;
-            z-index: 1000;
-        }
-
         .location-item {
             background: white;
             padding: 10px 15px;
@@ -177,6 +164,8 @@
         let markers = [];
         let autocompleteService;
         let placesService;
+        let userLocationMarker = null;
+        let watchId = null;
 
         // Küçükçekmece koordinatları ve sınırları
         const KUCUKCEKMECE_CENTER = { lat: 41.0180, lng: 28.7864 };
@@ -311,8 +300,46 @@
             if (window.innerWidth <= 768) {
                 startLocationTracking();
             } else {
-                let userLocationMarker = null;
-        let watchId = null;
+                // Konum butonunu başlat (sadece desktop)
+                initLocationButton();
+            }
+
+            // Arama input eventi
+            const searchInput = document.getElementById('searchInput');
+            const suggestions = document.getElementById('suggestions');
+
+            // Sayfa yüklendiğinde otomatik odaklan
+            setTimeout(() => {
+                searchInput.focus();
+            }, 1000);
+
+            searchInput.addEventListener('input', function() {
+                const query = this.value.trim();
+                if (query.length > 2) {
+                    searchPlaces(query);
+                } else {
+                    suggestions.style.display = 'none';
+                }
+            });
+
+            // Enter tuşu
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const query = this.value.trim();
+                    if (query) {
+                        performSearch(query);
+                    }
+                }
+            });
+
+            // Dışarı tıklandığında önerileri gizle
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.search-container')) {
+                    suggestions.style.display = 'none';
+                }
+            });
+        }
 
         // Mobil konum takibini başlat
         function startLocationTracking() {
@@ -383,45 +410,179 @@
             }
         }
 
-        // Konum butonunu başlat (sadece desktop)
-                initLocationButton();
-            }
-
-            // Arama input eventi
-            const searchInput = document.getElementById('searchInput');
-            const suggestions = document.getElementById('suggestions');
-
-            // Sayfa yüklendiğinde otomatik odaklan
-            setTimeout(() => {
-                searchInput.focus();
-            }, 1000);
-
-            searchInput.addEventListener('input', function() {
-                const query = this.value.trim();
-                if (query.length > 2) {
-                    searchPlaces(query);
+        // Konum butonunu başlat
+        function initLocationButton() {
+            const locationBtn = document.getElementById('locationBtn');
+            
+            locationBtn.addEventListener('click', function() {
+                if (navigator.geolocation) {
+                    // Konum alınırken buton animasyonu
+                    locationBtn.style.transform = 'scale(0.9)';
+                    locationBtn.innerHTML = '⏳';
+                    
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            const userLocation = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                            
+                            // Kullanıcı konumu Küçükçekmece sınırları içinde mi kontrol et
+                            if (isInKucukcekmece(userLocation.lat, userLocation.lng)) {
+                                // Konum marker'ı ekle
+                                clearMarkers();
+                                const marker = new google.maps.Marker({
+                                    position: userLocation,
+                                    map: map,
+                                    title: 'Konumunuz',
+                                    icon: {
+                                        url: 'data:image/svg+xml;base64,' + btoa(`
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#4285f4">
+                                                <circle cx="12" cy="12" r="8" stroke="white" stroke-width="2"/>
+                                            </svg>
+                                        `),
+                                        scaledSize: new google.maps.Size(24, 24)
+                                    },
+                                    animation: google.maps.Animation.DROP
+                                });
+                                
+                                markers.push(marker);
+                                map.setCenter(userLocation);
+                                map.setZoom(17);
+                                
+                                locationBtn.innerHTML = '✅';
+                                setTimeout(() => {
+                                    locationBtn.innerHTML = '📍';
+                                    locationBtn.style.transform = 'scale(1)';
+                                }, 1000);
+                            } else {
+                                alert('Konumunuz Küçükçekmece sınırları dışında görünüyor.');
+                                locationBtn.innerHTML = '❌';
+                                setTimeout(() => {
+                                    locationBtn.innerHTML = '📍';
+                                    locationBtn.style.transform = 'scale(1)';
+                                }, 1000);
+                            }
+                        },
+                        function(error) {
+                            console.error('Konum alınamadı:', error);
+                            alert('Konum alınamadı. Lütfen konum servislerinin açık olduğundan emin olun.');
+                            locationBtn.innerHTML = '❌';
+                            setTimeout(() => {
+                                locationBtn.innerHTML = '📍';
+                                locationBtn.style.transform = 'scale(1)';
+                            }, 1000);
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 10000,
+                            maximumAge: 0
+                        }
+                    );
                 } else {
-                    suggestions.style.display = 'none';
+                    alert('Bu tarayıcı konum servislerini desteklemiyor.');
                 }
             });
+        }
 
-            // Enter tuşu
-            searchInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const query = this.value.trim();
-                    if (query) {
-                        performSearch(query);
-                    }
-                }
-            });
+        // Mahalle sınırlarını yükle
+        function loadNeighborhoodBoundaries() {
+            fetch('https://raw.githubusercontent.com/Sadrettin86/kucukcekmece-map/main/export.geojson')
+                .then(response => response.json())
+                .then(geojsonData => {
+                    // GeoJSON'u haritaya ekle
+                    map.data.addGeoJson(geojsonData);
+                    
+                    // Mahalle sınırları stilini ayarla
+                    map.data.setStyle({
+                        fillOpacity: 0,
+                        strokeColor: '#ff0000',
+                        strokeWeight: 1,
+                        strokeOpacity: 0.7
+                    });
 
-            // Dışarı tıklandığında önerileri gizle
-            document.addEventListener('click', function(e) {
-                if (!e.target.closest('.search-container')) {
-                    suggestions.style.display = 'none';
-                }
-            });
+                    // Mahalle üzerine gelince sadece sınır kalınlaşsın
+                    map.data.addListener('mouseover', function(event) {
+                        map.data.overrideStyle(event.feature, {
+                            strokeWeight: 3
+                        });
+                    });
+
+                    // Mouse çıkınca normal haline döndür
+                    map.data.addListener('mouseout', function(event) {
+                        map.data.revertStyle(event.feature);
+                    });
+
+                    // Mahalle tıklama eventi
+                    map.data.addListener('click', function(event) {
+                        const name = event.feature.getProperty('name') || 
+                                    event.feature.getProperty('ad') || 
+                                    event.feature.getProperty('mahalle') ||
+                                    'Mahalle';
+                        
+                        // Mahalle sınırlarını hesapla
+                        const bounds = new google.maps.LatLngBounds();
+                        event.feature.getGeometry().forEachLatLng(function(latlng) {
+                            bounds.extend(latlng);
+                        });
+                        
+                        // 2 saniyelik popup göster
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `<div style="padding: 8px; font-weight: bold; color: #333;">${name}</div>`,
+                            position: bounds.getCenter(),
+                            disableAutoPan: true
+                        });
+                        
+                        infoWindow.open(map);
+                        
+                        // InfoWindow açıldıktan sonra çarpı butonunu kaldır
+                        google.maps.event.addListenerOnce(infoWindow, 'domready', function() {
+                            // Çarpı butonunu gizle - birden fazla selector dene
+                            setTimeout(() => {
+                                const closeButtons = [
+                                    '.gm-ui-hover-effect',
+                                    '.gm-style-iw-chr > div',
+                                    '.gm-style-iw-chr button',
+                                    '[role="button"]'
+                                ];
+                                
+                                closeButtons.forEach(selector => {
+                                    const btn = document.querySelector(selector);
+                                    if (btn && btn.getAttribute('title') === 'Close') {
+                                        btn.style.display = 'none';
+                                    }
+                                });
+                            }, 50);
+                        });
+                        
+                        // 1.5 saniye sonra fade başlat, 0.5 saniye fade
+                        setTimeout(() => {
+                            const iwContent = document.querySelector('.gm-style-iw-chr');
+                            if (iwContent) {
+                                iwContent.style.transition = 'opacity 0.5s ease-out';
+                                iwContent.style.opacity = '0';
+                            }
+                        }, 1500);
+                        
+                        // 2 saniye sonra popup'ı kapat
+                        setTimeout(() => {
+                            infoWindow.close();
+                        }, 2000);
+                        
+                        map.fitBounds(bounds);
+                        
+                        // Yumuşak zoom geçişi için daha uzun süre
+                        setTimeout(() => {
+                            const currentZoom = map.getZoom();
+                            map.setZoom(currentZoom + 1);
+                        }, 800);
+                    });
+
+                    console.log('Mahalle sınırları başarıyla yüklendi');
+                })
+                .catch(error => {
+                    console.error('Mahalle sınırları yüklenirken hata:', error);
+                });
         }
 
         function searchPlaces(query) {
@@ -573,167 +734,12 @@
                 title: place.name
             });
 
-            const infoWindow = new google.maps.InfoWindow({
-                content: `
-                    <div>
-                        <h4>${place.name}</h4>
-                        <p>${place.formatted_address}</p>
-                    </div>
-                `
-            });
-
-            marker.addListener('click', () => {
-                infoWindow.open(map, marker);
-            });
-
             markers.push(marker);
         }
 
         function clearMarkers() {
             markers.forEach(marker => marker.setMap(null));
             markers = [];
-        }
-
-        // Konum butonunu başlat
-        function initLocationButton() {
-            const locationBtn = document.getElementById('locationBtn');
-            
-            locationBtn.addEventListener('click', function() {
-                if (navigator.geolocation) {
-                    // Konum alınırken buton animasyonu
-                    locationBtn.style.transform = 'scale(0.9)';
-                    locationBtn.innerHTML = '⏳';
-                    
-                    navigator.geolocation.getCurrentPosition(
-                        function(position) {
-                            const userLocation = {
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude
-                            };
-                            
-                            // Kullanıcı konumu Küçükçekmece sınırları içinde mi kontrol et
-                            if (isInKucukcekmece(userLocation.lat, userLocation.lng)) {
-                                // Konum marker'ı ekle
-                                clearMarkers();
-                                const marker = new google.maps.Marker({
-                                    position: userLocation,
-                                    map: map,
-                                    title: 'Konumunuz',
-                                    icon: {
-                                        url: 'data:image/svg+xml;base64,' + btoa(`
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#4285f4">
-                                                <circle cx="12" cy="12" r="8" stroke="white" stroke-width="2"/>
-                                            </svg>
-                                        `),
-                                        scaledSize: new google.maps.Size(24, 24)
-                                    },
-                                    animation: google.maps.Animation.DROP
-                                });
-                                
-                                markers.push(marker);
-                                map.setCenter(userLocation);
-                                map.setZoom(17);
-                                
-                                locationBtn.innerHTML = '✅';
-                                setTimeout(() => {
-                                    locationBtn.innerHTML = '📍';
-                                    locationBtn.style.transform = 'scale(1)';
-                                }, 1000);
-                            } else {
-                                alert('Konumunuz Küçükçekmece sınırları dışında görünüyor.');
-                                locationBtn.innerHTML = '❌';
-                                setTimeout(() => {
-                                    locationBtn.innerHTML = '📍';
-                                    locationBtn.style.transform = 'scale(1)';
-                                }, 1000);
-                            }
-                        },
-                        function(error) {
-                            console.error('Konum alınamadı:', error);
-                            alert('Konum alınamadı. Lütfen konum servislerinin açık olduğundan emin olun.');
-                            locationBtn.innerHTML = '❌';
-                            setTimeout(() => {
-                                locationBtn.innerHTML = '📍';
-                                locationBtn.style.transform = 'scale(1)';
-                            }, 1000);
-                        },
-                        {
-                            enableHighAccuracy: true,
-                            timeout: 10000,
-                            maximumAge: 0
-                        }
-                    );
-                } else {
-                    alert('Bu tarayıcı konum servislerini desteklemiyor.');
-                }
-            });
-        }
-            try {
-                const response = await fetch('https://raw.githubusercontent.com/Sadrettin86/kucukcekmece-map/main/export.geojson');
-                const geojsonData = await response.json();
-                
-                // GeoJSON'u haritaya ekle
-                map.data.addGeoJson(geojsonData);
-                
-                // Mahalle sınırları stilini ayarla
-                map.data.setStyle({
-                    fillOpacity: 0,
-                    strokeColor: '#ff0000',
-                    strokeWeight: 1,
-                    strokeOpacity: 0.7
-                });
-
-                // Mahalle üzerine gelince sadece sınır kalınlaşsın
-                map.data.addListener('mouseover', function(event) {
-                    map.data.overrideStyle(event.feature, {
-                        strokeWeight: 3
-                    });
-                });
-
-                // Mouse çıkınca normal haline döndür
-                map.data.addListener('mouseout', function(event) {
-                    map.data.revertStyle(event.feature);
-                });
-
-                // Mahalle tıklama eventi
-                map.data.addListener('click', function(event) {
-                    const name = event.feature.getProperty('name') || 
-                                event.feature.getProperty('ad') || 
-                                event.feature.getProperty('mahalle') ||
-                                'Mahalle';
-                    
-                    // Mahalle sınırlarını hesapla
-                    const bounds = new google.maps.LatLngBounds();
-                    event.feature.getGeometry().forEachLatLng(function(latlng) {
-                        bounds.extend(latlng);
-                    });
-                    
-                    // 1 saniyelik popup göster
-                    const infoWindow = new google.maps.InfoWindow({
-                        content: `<div style="padding: 8px; font-weight: bold; color: #333;">${name}</div>`,
-                        position: bounds.getCenter()
-                    });
-                    
-                    infoWindow.open(map);
-                    
-                    // 2 saniye sonra popup'ı kapat
-                    setTimeout(() => {
-                        infoWindow.close();
-                    }, 2000);
-                    
-                    map.fitBounds(bounds);
-                    
-                    // Yumuşak zoom geçişi için daha uzun süre
-                    setTimeout(() => {
-                        const currentZoom = map.getZoom();
-                        map.setZoom(currentZoom + 1);
-                    }, 800);
-                });
-
-                console.log('Mahalle sınırları başarıyla yüklendi');
-            } catch (error) {
-                console.error('Mahalle sınırları yüklenirken hata:', error);
-            }
         }
 
         // Harita yüklendiğinde çalış
@@ -757,9 +763,6 @@
                                 <li>"Credentials" bölümünden API anahtarı oluşturun</li>
                                 <li>HTML dosyasının en altındaki script etiketindeki YOUR_API_KEY'i gerçek anahtarınızla değiştirin</li>
                             </ol>
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; font-family: monospace;">
-                                &lt;script src="https://maps.googleapis.com/maps/api/js?key=<span style="color: #e74c3c;">AIzaSyBwTLcFVxOdIgVtFU9csIjgjB6h8M0PCcM</span>&libraries=places&callback=initMap"&gt;&lt;/script&gt;
-                            </div>
                         </div>
                     </div>
                 `;
