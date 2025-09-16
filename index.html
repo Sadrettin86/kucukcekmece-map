@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Küçükçekmece Harita</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .search-container {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: white;
+            border-radius: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            padding: 8px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #searchInput {
+            flex: 1;
+            border: none;
+            outline: none;
+            padding: 12px 15px;
+            font-size: 16px;
+            background: transparent;
+        }
+
+        .search-icon {
+            padding: 10px;
+            color: #666;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            font-size: 14px;
+            color: #666;
+            z-index: 1000;
+        }
+
+        .location-item {
+            background: white;
+            padding: 10px 15px;
+            margin: 5px 0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid #4285f4;
+        }
+
+        .location-item:hover {
+            background: #f5f5f5;
+            transform: translateX(5px);
+        }
+
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .no-results {
+            padding: 15px;
+            text-align: center;
+            color: #999;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Küçükçekmece'de ara..." autocomplete="off">
+        </div>
+        <div id="suggestions" class="suggestions"></div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="info-panel">
+        <strong>📍 Küçükçekmece Haritası</strong><br>
+        Sadece Küçükçekmece ilçesi içinde arama yapılır
+    </div>
+
+    <script>
+        let map;
+        let service;
+        let markers = [];
+        let autocompleteService;
+        let placesService;
+
+        // Küçükçekmece koordinatları ve sınırları
+        const KUCUKCEKMECE_CENTER = { lat: 41.0180, lng: 28.7864 };
+        const KUCUKCEKMECE_BOUNDS = {
+            north: 41.0650,
+            south: 40.9710,
+            east: 28.8500,
+            west: 28.7228
+        };
+
+        function initMap() {
+            // Haritayı başlat
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: KUCUKCEKMECE_CENTER,
+                zoom: 13,
+                restriction: {
+                    latLngBounds: KUCUKCEKMECE_BOUNDS,
+                    strictBounds: true
+                },
+                styles: [
+                    {
+                        featureType: 'administrative',
+                        elementType: 'geometry.stroke',
+                        stylers: [{ color: '#4285f4' }, { weight: 2 }]
+                    }
+                ]
+            });
+
+            // Küçükçekmece sınırlarını vurgula
+            const kucukcekmecePolygon = new google.maps.Polygon({
+                paths: [
+                    { lat: 41.0650, lng: 28.7228 },
+                    { lat: 41.0650, lng: 28.8500 },
+                    { lat: 40.9710, lng: 28.8500 },
+                    { lat: 40.9710, lng: 28.7228 }
+                ],
+                strokeColor: '#4285f4',
+                strokeOpacity: 0.8,
+                strokeWeight: 3,
+                fillColor: '#4285f4',
+                fillOpacity: 0.1
+            });
+            kucukcekmecePolygon.setMap(map);
+
+            // Servisler
+            autocompleteService = new google.maps.places.AutocompleteService();
+            placesService = new google.maps.places.PlacesService(map);
+
+            // Arama input eventi
+            const searchInput = document.getElementById('searchInput');
+            const suggestions = document.getElementById('suggestions');
+
+            searchInput.addEventListener('input', function() {
+                const query = this.value.trim();
+                if (query.length > 2) {
+                    searchPlaces(query);
+                } else {
+                    suggestions.style.display = 'none';
+                }
+            });
+
+            // Enter tuşu
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const query = this.value.trim();
+                    if (query) {
+                        performSearch(query);
+                    }
+                }
+            });
+
+            // Dışarı tıklandığında önerileri gizle
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.search-container')) {
+                    suggestions.style.display = 'none';
+                }
+            });
+        }
+
+        function searchPlaces(query) {
+            const request = {
+                input: query + ' Küçükçekmece İstanbul',
+                locationBias: {
+                    center: KUCUKCEKMECE_CENTER,
+                    radius: 5000
+                },
+                componentRestrictions: { country: 'tr' }
+            };
+
+            autocompleteService.getPlacePredictions(request, (predictions, status) => {
+                const suggestions = document.getElementById('suggestions');
+                suggestions.innerHTML = '';
+
+                if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+                    // Sadece Küçükçekmece ile ilgili sonuçları filtrele
+                    const filteredPredictions = predictions.filter(prediction => 
+                        prediction.description.toLowerCase().includes('küçükçekmece') ||
+                        prediction.description.toLowerCase().includes('kucukcekmece')
+                    );
+
+                    if (filteredPredictions.length > 0) {
+                        filteredPredictions.slice(0, 5).forEach(prediction => {
+                            const item = document.createElement('div');
+                            item.className = 'location-item';
+                            item.innerHTML = `
+                                <div><strong>${prediction.structured_formatting.main_text}</strong></div>
+                                <div style="font-size: 12px; color: #666;">${prediction.structured_formatting.secondary_text}</div>
+                            `;
+                            item.addEventListener('click', () => {
+                                selectPlace(prediction.place_id, prediction.description);
+                            });
+                            suggestions.appendChild(item);
+                        });
+                        suggestions.style.display = 'block';
+                    } else {
+                        suggestions.innerHTML = '<div class="no-results">Küçükçekmece\'de sonuç bulunamadı</div>';
+                        suggestions.style.display = 'block';
+                    }
+                } else {
+                    suggestions.innerHTML = '<div class="no-results">Sonuç bulunamadı</div>';
+                    suggestions.style.display = 'block';
+                }
+            });
+        }
+
+        function selectPlace(placeId, description) {
+            const request = {
+                placeId: placeId,
+                fields: ['name', 'geometry', 'formatted_address', 'rating', 'types']
+            };
+
+            placesService.getDetails(request, (place, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK) {
+                    const location = place.geometry.location;
+                    
+                    // Küçükçekmece sınırları içinde mi kontrol et
+                    if (isInKucukcekmece(location.lat(), location.lng())) {
+                        showPlace(place);
+                        document.getElementById('searchInput').value = place.name;
+                        document.getElementById('suggestions').style.display = 'none';
+                    } else {
+                        alert('Bu konum Küçükçekmece sınırları dışında!');
+                    }
+                }
+            });
+        }
+
+        function performSearch(query) {
+            const request = {
+                query: query + ' Küçükçekmece İstanbul',
+                location: KUCUKCEKMECE_CENTER,
+                radius: 5000,
+                fields: ['name', 'geometry', 'formatted_address']
+            };
+
+            placesService.textSearch(request, (results, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+                    // Küçükçekmece içindeki sonuçları filtrele
+                    const filteredResults = results.filter(place => {
+                        const location = place.geometry.location;
+                        return isInKucukcekmece(location.lat(), location.lng());
+                    });
+
+                    if (filteredResults.length > 0) {
+                        clearMarkers();
+                        filteredResults.slice(0, 10).forEach(place => {
+                            addMarker(place);
+                        });
+                        
+                        // İlk sonuca odaklan
+                        showPlace(filteredResults[0]);
+                    } else {
+                        alert('Küçükçekmece\'de bu aramayla ilgili sonuç bulunamadı!');
+                    }
+                } else {
+                    alert('Arama sonucu bulunamadı!');
+                }
+            });
+
+            document.getElementById('suggestions').style.display = 'none';
+        }
+
+        function isInKucukcekmece(lat, lng) {
+            return lat >= KUCUKCEKMECE_BOUNDS.south && 
+                   lat <= KUCUKCEKMECE_BOUNDS.north && 
+                   lng >= KUCUKCEKMECE_BOUNDS.west && 
+                   lng <= KUCUKCEKMECE_BOUNDS.east;
+        }
+
+        function showPlace(place) {
+            const location = place.geometry.location;
+            
+            clearMarkers();
+            
+            const marker = new google.maps.Marker({
+                position: location,
+                map: map,
+                title: place.name,
+                animation: google.maps.Animation.DROP
+            });
+
+            const infoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div style="max-width: 250px;">
+                        <h3 style="margin: 0 0 10px 0; color: #333;">${place.name}</h3>
+                        <p style="margin: 5px 0; color: #666; font-size: 14px;">${place.formatted_address}</p>
+                        ${place.rating ? `<div style="color: #f4b400; margin: 5px 0;">⭐ ${place.rating}/5</div>` : ''}
+                        <div style="margin-top: 10px; font-size: 12px; color: #888;">📍 Küçükçekmece, İstanbul</div>
+                    </div>
+                `
+            });
+
+            marker.addListener('click', () => {
+                infoWindow.open(map, marker);
+            });
+
+            markers.push(marker);
+            map.setCenter(location);
+            map.setZoom(16);
+            
+            // Otomatik olarak info window'u aç
+            setTimeout(() => infoWindow.open(map, marker), 500);
+        }
+
+        function addMarker(place) {
+            const marker = new google.maps.Marker({
+                position: place.geometry.location,
+                map: map,
+                title: place.name
+            });
+
+            const infoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div>
+                        <h4>${place.name}</h4>
+                        <p>${place.formatted_address}</p>
+                    </div>
+                `
+            });
+
+            marker.addListener('click', () => {
+                infoWindow.open(map, marker);
+            });
+
+            markers.push(marker);
+        }
+
+        function clearMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+        }
+
+        // Harita yüklendiğinde çalış
+        window.onload = function() {
+            if (typeof google === 'undefined') {
+                document.body.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100vh; flex-direction: column; font-family: Arial, sans-serif;">
+                        <h2 style="color: #e74c3c; margin-bottom: 20px;">⚠️ Google Maps API Anahtarı Gerekli</h2>
+                        <div style="max-width: 600px; text-align: center; line-height: 1.6; color: #666;">
+                            <p>Bu harita sitesinin çalışması için Google Maps API anahtarı gereklidir.</p>
+                            <p><strong>Kurulum adımları:</strong></p>
+                            <ol style="text-align: left; margin: 20px 0;">
+                                <li><a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a>'a gidin</li>
+                                <li>Yeni bir proje oluşturun veya mevcut projeyi seçin</li>
+                                <li>"APIs & Services" > "Library" bölümünden şu API'leri etkinleştirin:
+                                    <ul>
+                                        <li>Maps JavaScript API</li>
+                                        <li>Places API</li>
+                                    </ul>
+                                </li>
+                                <li>"Credentials" bölümünden API anahtarı oluşturun</li>
+                                <li>HTML dosyasının en altındaki script etiketindeki YOUR_API_KEY'i gerçek anahtarınızla değiştirin</li>
+                            </ol>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; font-family: monospace;">
+                                &lt;script src="https://maps.googleapis.com/maps/api/js?key=<span style="color: #e74c3c;">BURAYA_API_ANAHTARINIZI_YAZIN</span>&libraries=places&callback=initMap"&gt;&lt;/script&gt;
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        };
+    </script>
+
+    <!-- Google Maps API - API anahtarını buraya ekleyin -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places&callback=initMap" async defer></script>
+</body>
+</html>
