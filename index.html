@@ -477,11 +477,29 @@
 
                 // Mahalle tıklama eventi
                 map.data.addListener('click', function(event) {
-                    // Mahalle sınırlarını hesapla ve zoom yap
+                    const name = event.feature.getProperty('name') || 
+                                event.feature.getProperty('ad') || 
+                                event.feature.getProperty('mahalle') ||
+                                'Mahalle';
+                    
+                    // Mahalle sınırlarını hesapla
                     const bounds = new google.maps.LatLngBounds();
                     event.feature.getGeometry().forEachLatLng(function(latlng) {
                         bounds.extend(latlng);
                     });
+                    
+                    // 1 saniyelik popup göster
+                    const infoWindow = new google.maps.InfoWindow({
+                        content: `<div style="padding: 8px; font-weight: bold; color: #333;">${name}</div>`,
+                        position: bounds.getCenter()
+                    });
+                    
+                    infoWindow.open(map);
+                    
+                    // 2 saniye sonra popup'ı kapat
+                    setTimeout(() => {
+                        infoWindow.close();
+                    }, 2000);
                     
                     map.fitBounds(bounds);
                     
