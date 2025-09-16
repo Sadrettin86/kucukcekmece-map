@@ -503,11 +503,11 @@
                     
                     map.fitBounds(bounds);
                     
-                    // Bir tık daha yakın zoom
+                    // Yumuşak zoom geçişi için daha uzun süre
                     setTimeout(() => {
                         const currentZoom = map.getZoom();
                         map.setZoom(currentZoom + 1);
-                    }, 500);
+                    }, 800);
                 });
 
                 console.log('Mahalle sınırları başarıyla yüklendi');
