@@ -109,7 +109,7 @@
     <div class="search-container">
         <div class="search-box">
             <span class="search-icon">🔍</span>
-            <input type="text" id="searchInput" placeholder="Küçükçekmece'de ara..." autocomplete="off">
+            <input type="text" id="searchInput" placeholder="Küçükçekmece'de ara..." autocomplete="off" autofocus>
         </div>
         <div id="suggestions" class="suggestions"></div>
     </div>
@@ -217,6 +217,11 @@
             // Arama input eventi
             const searchInput = document.getElementById('searchInput');
             const suggestions = document.getElementById('suggestions');
+
+            // Sayfa yüklendiğinde otomatik odaklan
+            setTimeout(() => {
+                searchInput.focus();
+            }, 1000);
 
             searchInput.addEventListener('input', function() {
                 const query = this.value.trim();
