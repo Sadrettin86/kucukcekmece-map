@@ -170,10 +170,10 @@
         // Küçükçekmece koordinatları ve sınırları
         const KUCUKCEKMECE_CENTER = { lat: 41.0180, lng: 28.7864 };
         const KUCUKCEKMECE_BOUNDS = {
-            north: 41.0650,
-            south: 40.9710,
-            east: 28.8500,
-            west: 28.7228
+            north: 41.0750,
+            south: 40.9600,
+            east: 28.8650,
+            west: 28.7100
         };
 
         function initMap() {
@@ -297,10 +297,10 @@
             // Küçükçekmece sınırlarını vurgula
             const kucukcekmecePolygon = new google.maps.Polygon({
                 paths: [
-                    { lat: 41.0650, lng: 28.7228 },
-                    { lat: 41.0650, lng: 28.8500 },
-                    { lat: 40.9710, lng: 28.8500 },
-                    { lat: 40.9710, lng: 28.7228 }
+                    { lat: 41.0750, lng: 28.7100 },
+                    { lat: 41.0750, lng: 28.8650 },
+                    { lat: 40.9600, lng: 28.8650 },
+                    { lat: 40.9600, lng: 28.7100 }
                 ],
                 strokeColor: '#4285f4',
                 strokeOpacity: 0.8,
@@ -743,6 +743,23 @@
                 animation: google.maps.Animation.DROP
             });
 
+            // Yol tarifi butonu için InfoWindow ekle
+            const infoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div style="padding: 10px; text-align: center;">
+                        <h4 style="margin: 0 0 10px 0;">${place.name}</h4>
+                        <button onclick="getDirections(${location.lat()}, ${location.lng()}, '${place.name.replace(/'/g, "\\'")}')" 
+                                style="background: #4285f4; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 14px;">
+                            🚗 Yol Tarifi Al
+                        </button>
+                    </div>
+                `
+            });
+
+            marker.addListener('click', () => {
+                infoWindow.open(map, marker);
+            });
+
             markers.push(marker);
             map.setCenter(location);
             map.setZoom(16);
@@ -761,6 +778,33 @@
         function clearMarkers() {
             markers.forEach(marker => marker.setMap(null));
             markers = [];
+        }
+
+        // Yol tarifi al fonksiyonu
+        function getDirections(destLat, destLng, placeName) {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const userLat = position.coords.latitude;
+                        const userLng = position.coords.longitude;
+                        
+                        // Google Maps'te yol tarifi URL'si oluştur
+                        const directionsUrl = `https://www.google.com/maps/dir/${userLat},${userLng}/${destLat},${destLng}`;
+                        
+                        // Yeni sekmede Google Maps'i aç
+                        window.open(directionsUrl, '_blank');
+                    },
+                    function(error) {
+                        // Konum alınamazsa sadece hedef adresi aç
+                        const directionsUrl = `https://www.google.com/maps/search/${placeName}/@${destLat},${destLng},17z`;
+                        window.open(directionsUrl, '_blank');
+                    }
+                );
+            } else {
+                // Geolocation desteklenmiyorsa sadece hedef adresi aç
+                const directionsUrl = `https://www.google.com/maps/search/${placeName}/@${destLat},${destLng},17z`;
+                window.open(directionsUrl, '_blank');
+            }
         }
 
         // Harita yüklendiğinde çalış
